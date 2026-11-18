@@ -209,7 +209,10 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:12p
 /* ---------- popup ---------- */
 .scrim{position:fixed;inset:0;background:rgba(6,10,22,.55);z-index:10;display:flex;align-items:flex-end;justify-content:center}
 .scrim[hidden]{display:none}
-.sheet{background:var(--surface);width:100%;max-width:520px;border-radius:26px 26px 0 0;max-height:92vh;max-height:calc(100dvh - 12px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -10px 40px -10px rgba(0,0,0,.3)}
+.scrim{padding-top:calc(env(safe-area-inset-top) + 12px)}
+.sheet-h .x{width:38px;height:38px;background:var(--soft);color:var(--ink);border:1px solid var(--line);margin-top:8px}
+.sheet-h .x svg{width:18px;height:18px}
+.sheet{background:var(--surface);width:100%;max-width:520px;border-radius:26px 26px 0 0;max-height:calc(92vh - env(safe-area-inset-top));max-height:calc(100dvh - env(safe-area-inset-top) - 20px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -10px 40px -10px rgba(0,0,0,.3)}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .24s cubic-bezier(.2,.8,.2,1)}@keyframes up{from{transform:translateY(40px);opacity:.5}to{transform:none;opacity:1}}}
 .sheet-h{flex:none;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 16px 10px;position:relative}
 .sheet-h::before{content:"";position:absolute;left:50%;top:6px;transform:translateX(-50%);width:36px;height:4px;border-radius:4px;background:var(--line)}
