@@ -770,7 +770,10 @@ function render(){
   const tIn = bars($("barsIn"), per.filter(r=>r.jenis==="masuk"), "masuk");
   const tOut = bars($("barsOut"), per.filter(r=>r.jenis==="keluar"), "keluar");
   $("mIn").textContent = rp(tIn); $("mOut").textContent = rp(tOut);
-  $("mNet").textContent = (tIn-tOut>=0?"+":"") + rpSigned(tIn-tOut);
+  // selisih: pengeluaran yang dibayar pakai tabungan tidak ikut mengurangi
+  const tOutSisa = per.filter(r=>r.jenis==="keluar" && !r.dari).reduce((s,r)=> s+(+r.jumlah||0), 0);
+  const net = tIn - tOutSisa;
+  $("mNet").textContent = (net>=0?"+":"") + rpSigned(net);
   $("inTot").textContent = tIn ? rp(tIn) : ""; $("outTot").textContent = tOut ? rp(tOut) : "";
 
   const shown = sorted(per.filter(r=> S.filter==="semua" || r.jenis===S.filter || (S.filter==="tabungan" && isTab(r.jenis))));
@@ -1153,7 +1156,7 @@ $("fotoIn").addEventListener("change", async e=>{
 });
 
 /* ---------- update otomatis: selalu pakai versi terbaru ---------- */
-const BUILD = "2026-11-18-crop";
+const BUILD = "2026-11-18-selisih";
 async function cekUpdate(){
   try{
     const r = await fetch("./index.html?cb="+Date.now(), {cache:"no-store"});
