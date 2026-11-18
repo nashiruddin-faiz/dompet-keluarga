@@ -1152,6 +1152,24 @@ $("fotoIn").addEventListener("change", async e=>{
   try{ await bukaCrop(f); }catch(err){ setNote("Foto tidak bisa dibuka. Coba foto lain."); }
 });
 
+/* ---------- update otomatis: selalu pakai versi terbaru ---------- */
+const BUILD = "2026-11-18-crop";
+async function cekUpdate(){
+  try{
+    const r = await fetch("./index.html?cb="+Date.now(), {cache:"no-store"});
+    if(!r.ok) return;
+    const t = await r.text();
+    const m = t.match(/const BUILD = "([^"]+)"/);
+    if(!m || m[1]===BUILD) return;
+    const k = "dk_upd_"+m[1];
+    if(sessionStorage.getItem(k)) return;
+    sessionStorage.setItem(k, "1");
+    location.replace(location.pathname+"?v="+encodeURIComponent(m[1]));
+  }catch(e){}
+}
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) cekUpdate(); });
+cekUpdate();
+
 render();
 WHO = ""; pickWho = ""; LS.del("dk_who"); showLogin(); muat();
 </script>
