@@ -273,16 +273,14 @@ textarea.plain{resize:none;min-height:48px}
   <div class="login-in">
     <span class="logo big" aria-hidden="true" data-i="wallet"></span>
     <h1>Dompet Keluarga</h1>
-    <p class="sub">Masukkan PIN keluarga untuk mulai.</p>
+    <p class="sub">Kamu siapa? Tap salah satu untuk mulai.</p>
     <form id="loginForm" novalidate>
-      <input id="pinIn" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="••••••" aria-label="PIN keluarga">
-      <span class="lbl2">Kamu siapa?</span>
-      <div class="who-pick login-who">
+            <div class="who-pick login-who">
         <button type="button" data-n="Mamah" aria-pressed="false"><span class="av" style="background:linear-gradient(135deg,#E07AA6,#B5537A)">M</span>Mamah</button>
         <button type="button" data-n="Papah" aria-pressed="false"><span class="av" style="background:linear-gradient(135deg,#5B86D6,#2F5AA8)">P</span>Papah</button>
       </div>
       <p class="err" id="loginErr" role="alert"></p>
-      <button class="btn gold" id="loginGo" type="submit">Masuk</button>
+      <button class="btn gold" id="loginGo" type="submit" hidden>Masuk</button>
     </form>
   </div>
 </div>
@@ -596,7 +594,7 @@ const LS = {
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
   del(k){ try{ localStorage.removeItem(k); }catch(e){} }
 };
-let PIN = LS.get("dk_pin"), WHO = LS.get("dk_who") || "";
+let PIN = "101196", WHO = LS.get("dk_who") || "";
 const AKSI = {cek:"cek", ambilData:"ambil", simpan:"simpan", hapus:"hapus", hapusSemua:"hapusSemua"};
 async function call(fn, arg){
   const body = {pin:PIN, who:WHO, action:AKSI[fn]};
@@ -971,32 +969,29 @@ document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && !anyO
 /* ---------- masuk pakai PIN ---------- */
 let pickWho = WHO;
 function syncPick(){ document.querySelectorAll(".login-who button").forEach(x=> x.setAttribute("aria-pressed", String(x.dataset.n===pickWho))); }
-document.querySelectorAll(".login-who button").forEach(b=> b.addEventListener("click", ()=>{ pickWho = b.dataset.n; syncPick(); }));
+document.querySelectorAll(".login-who button").forEach(b=> b.addEventListener("click", ()=>{ pickWho = b.dataset.n; syncPick(); $("loginForm").dispatchEvent(new Event("submit",{cancelable:true})); }));
 function showLogin(){ syncPick(); $("loginErr").textContent=""; $("login").hidden = false; }
 function mulai(){
   loadTimer = setTimeout(()=>{ if(S.mode==="loading") setNote("Masih memuat… kalau lama, cek koneksi internet."); }, 10000);
   muat();
 }
 function logout(){
-  PIN = null; LS.del("dk_pin");
+  WHO = ""; pickWho = ""; LS.del("dk_who");
   S.rows = []; S.mode = "loading"; setNote(""); render();
   showLogin();
 }
 $("logoutLink").addEventListener("click", logout);
 $("loginForm").addEventListener("submit", async e=>{
   e.preventDefault();
-  const pin = $("pinIn").value.trim();
-  if(!pin){ $("loginErr").textContent = "Isi PIN keluarga dulu."; return; }
+  const pin = "101196";
   if(!pickWho){ $("loginErr").textContent = "Pilih Mamah atau Papah."; return; }
   $("loginGo").disabled = true; $("loginGo").textContent = "Memeriksa…"; $("loginErr").textContent = "";
   PIN = pin; WHO = pickWho;
   try{
-    await call("cek");
-    LS.set("dk_pin", PIN); LS.set("dk_who", WHO);
-    $("login").hidden = true; $("pinIn").value = "";
+        LS.set("dk_pin", PIN); LS.set("dk_who", WHO);
+    $("login").hidden = true;
     S.myId = WHO; render(); mulai();
   }catch(err){
-    PIN = null;
     const m = String(err && err.message || "");
     $("loginErr").textContent = /PIN|Terlalu/.test(m) ? m : "Gagal tersambung. Cek internet lalu coba lagi.";
   }finally{ $("loginGo").disabled = false; $("loginGo").textContent = "Masuk"; }
