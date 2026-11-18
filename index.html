@@ -199,6 +199,10 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:12p
 .who-pick.login-who button[aria-pressed="true"]{border-color:var(--gold);background:rgba(212,175,97,.16)}
 .login-who .av{width:42px;height:42px;font-size:17px}
 .login .err{color:#FCA5A5;text-align:center}
+.av{overflow:hidden}
+.av img,.me-av img{width:100%;height:100%;object-fit:cover;display:block}
+.me-av{width:40px;height:40px;border-radius:50%;padding:0;border:2px solid #E9CB86;overflow:hidden;color:#fff;font-weight:800;font-size:16px;display:grid;place-items:center;flex:none;box-shadow:0 6px 14px -6px rgba(0,0,0,.5)}
+.login-who .av{width:64px;height:64px;font-size:24px}
 .btn.gold{background:linear-gradient(135deg,#E9CB86,#C0913F);color:#14213F}
 .foot{display:flex;justify-content:center;gap:4px;flex-wrap:wrap}
 
@@ -292,7 +296,11 @@ textarea.plain{resize:none;min-height:48px}
         <span class="logo" aria-hidden="true" data-i="wallet"></span>
         <div><h1>Dompet Keluarga</h1><p id="greet">Keuangan Mamah &amp; Papah</p></div>
       </div>
-      <button id="refresh" class="icon-btn glass" aria-label="Muat ulang data" title="Muat ulang data" data-i="refresh"></button>
+      <div class="hbtns">
+        <button id="refresh" class="icon-btn glass" aria-label="Muat ulang data" title="Muat ulang data" data-i="refresh"></button>
+        <button id="meAv" class="me-av" type="button" aria-label="Ganti foto profil" title="Ganti foto profil" hidden></button>
+      </div>
+      <input type="file" id="fotoIn" accept="image/*" hidden>
     </header>
 
     <button class="period-btn glass" id="periodBtn" type="button" aria-haspopup="dialog">
@@ -397,6 +405,15 @@ textarea.plain{resize:none;min-height:48px}
           <button type="button" data-j="tabung_luar" aria-pressed="false">Dari luar</button>
         </div>
         <span class="hint" id="srcHint"></span>
+      </div>
+      <div class="f" id="dariWrap" hidden>
+        <span id="dariLbl">Bayar pakai</span>
+        <div class="seg" id="segDari" role="group" aria-labelledby="dariLbl">
+          <button type="button" data-d="" aria-pressed="true">Sisa uang</button>
+          <button type="button" data-d="Tabungan Mamah" aria-pressed="false">Tab. Mamah</button>
+          <button type="button" data-d="Tabungan Papah" aria-pressed="false">Tab. Papah</button>
+        </div>
+        <span class="hint" id="dariHint"></span>
       </div>
       <label class="f" for="jumlah">Jumlah
         <div class="amount"><span>Rp</span><input id="jumlah" inputmode="numeric" autocomplete="off" placeholder="0"></div>
@@ -551,6 +568,9 @@ KAT.tabung_luar = KAT.tabung;
 const SIGN = {masuk:1, keluar:-1, tabung:-1, tabung_luar:0, tarik:1};
 // efek ke saldo tabungan
 const TSIGN = {tabung:1, tabung_luar:1, tarik:-1};
+// pengeluaran yang dibayar pakai tabungan
+const DARI_J = {"Tabungan Mamah":"keluar_tm", "Tabungan Papah":"keluar_tp"};
+const J_DARI = {keluar_tm:"Tabungan Mamah", keluar_tp:"Tabungan Papah"};
 const katOf = (j,k)=> (KAT[j]||[]).find(x=>x[0]===k) || [k,"#7A8699","dots"];
 const colorOf = (j,k)=> katOf(j,k)[1];
 const iconOf = (j,k)=> katOf(j,k)[2];
@@ -583,7 +603,7 @@ function periodRange(key){
 const S = {
   rows: [], mode: "loading", filter: "semua",
   per: periodKey(today()), myId: null, names: {},
-  edit: null, jenis: "keluar", kategori: null, delArmed: false, askedName: false
+  edit: null, jenis: "keluar", dari: "", kategori: null, delArmed: false, askedName: false
 };
 let loadTimer = null;
 
@@ -594,13 +614,15 @@ const LS = {
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
   del(k){ try{ localStorage.removeItem(k); }catch(e){} }
 };
+let FOTO = {}; try{ FOTO = JSON.parse(LS.get("dk_foto") || "{}") || {}; }catch(e){}
 let PIN = "101196", WHO = LS.get("dk_who") || "";
-const AKSI = {cek:"cek", ambilData:"ambil", simpan:"simpan", hapus:"hapus", hapusSemua:"hapusSemua"};
+const AKSI = {cek:"cek", ambilData:"ambil", simpan:"simpan", hapus:"hapus", hapusSemua:"hapusSemua", foto:"foto"};
 async function call(fn, arg){
   const body = {pin:PIN, who:WHO, action:AKSI[fn]};
   if(fn==="simpan") body.data = arg;
   if(fn==="hapus") body.id = arg;
   if(fn==="hapusSemua") body.pw = arg;
+  if(fn==="foto") body.foto = arg;
   const r = await fetch(API, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(body)});
   const j = await r.json();
   if(!j.ok) throw new Error(j.error || "Gagal");
@@ -608,9 +630,10 @@ async function call(fn, arg){
 }
 function needName(){ return !WHO; }
 function terapkan(res){
-  S.rows = res.rows || []; S.myId = WHO || null; S.names = res.nama || {};
+  S.rows = (res.rows || []).map(r=> J_DARI[r.jenis] ? {...r, jenis:"keluar", dari:J_DARI[r.jenis]} : r); S.myId = WHO || null; S.names = res.nama || {};
+  if(res.foto){ FOTO = res.foto; LS.set("dk_foto", JSON.stringify(FOTO)); }
   S.mode = "online"; render();
-  if(needName() && !S.askedName){ S.askedName = true; $("whoScrim").hidden = false; }
+  if(needName() && $("login").hidden && !S.askedName){ S.askedName = true; $("whoScrim").hidden = false; }
 }
 function pesanGagal(e, aksi){
   const m = String((e && e.message) || e || "");
@@ -672,15 +695,41 @@ function bars(el, rows, jenis){
 }
 const isTab = j => j in TSIGN;
 
+const AVBG = {Mamah:"linear-gradient(135deg,#E07AA6,#B5537A)", Papah:"linear-gradient(135deg,#5B86D6,#2F5AA8)"};
+function avIsi(el, n){
+  el.textContent = "";
+  el.style.background = AVBG[n] || "rgba(255,255,255,.15)";
+  if(FOTO[n]){ const im = new Image(); im.alt = ""; im.src = FOTO[n]; el.appendChild(im); }
+  else el.textContent = n ? n[0] : "?";
+}
+function renderFoto(){
+  document.querySelectorAll(".who-pick button[data-n] .av").forEach(a=> avIsi(a, a.closest("button").dataset.n));
+  const m = $("meAv"); m.hidden = !WHO; if(WHO) avIsi(m, WHO);
+}
+function kecilkan(file, q){
+  return new Promise((ok, no)=>{
+    const u = URL.createObjectURL(file); const im = new Image();
+    im.onload = ()=>{
+      const sz = 200, s = Math.min(im.naturalWidth, im.naturalHeight);
+      const c = document.createElement("canvas"); c.width = c.height = sz;
+      const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0,0,sz,sz);
+      x.drawImage(im, (im.naturalWidth-s)/2, (im.naturalHeight-s)/2, s, s, 0, 0, sz, sz);
+      URL.revokeObjectURL(u); ok(c.toDataURL("image/jpeg", q));
+    };
+    im.onerror = ()=>{ URL.revokeObjectURL(u); no(new Error("Foto tidak bisa dibaca.")); };
+    im.src = u;
+  });
+}
 function render(){
   $("periodName").textContent = periodName(S.per);
   $("periodRange").textContent = periodRange(S.per);
   const me = WHO || "";
   $("greet").textContent = me && !needName() ? "Halo, "+me : "Keuangan Mamah & Papah";
+  renderFoto();
   const all = S.rows;
 
   // Sisa uang & tabungan: dihitung dari awal (lifetime)
-  const saldo = all.reduce((s,r)=> s + (SIGN[r.jenis]||0)*(+r.jumlah||0), 0);
+  const saldo = all.reduce((s,r)=> s + (r.dari ? 0 : (SIGN[r.jenis]||0))*(+r.jumlah||0), 0);
   const sal = $("saldo"); sal.textContent = "";
   const cur = document.createElement("span"); cur.className="cur"; cur.textContent = (saldo<0?"−":"")+"Rp";
   sal.append(cur, document.createTextNode(Math.round(Math.abs(saldo)).toLocaleString("id-ID")));
@@ -688,7 +737,7 @@ function render(){
   $("miniSaldo").textContent = rpSigned(saldo);
   $("miniPerName").textContent = BULAN[Number(S.per.slice(5,7))-1].slice(0,3)+" "+S.per.slice(0,4);
   const tab = {"Tabungan Mamah":0, "Tabungan Papah":0};
-  all.forEach(r=>{ if(isTab(r.jenis) && r.kategori in tab) tab[r.kategori] += TSIGN[r.jenis]*(+r.jumlah||0); });
+  all.forEach(r=>{ if(isTab(r.jenis) && r.kategori in tab) tab[r.kategori] += TSIGN[r.jenis]*(+r.jumlah||0); if(r.dari && r.dari in tab) tab[r.dari] -= (+r.jumlah||0); });
   $("tabMamah").textContent = rpSigned(tab["Tabungan Mamah"]);
   $("tabPapah").textContent = rpSigned(tab["Tabungan Papah"]);
   $("tabTotal").textContent = rpSigned(tab["Tabungan Mamah"] + tab["Tabungan Papah"]);
@@ -752,6 +801,9 @@ function renderForm(){
   const setor = S.jenis==="tabung" || S.jenis==="tabung_luar";
   document.querySelectorAll("#segTab button").forEach(b=> b.setAttribute("aria-pressed", String(b.dataset.j==="tarik" ? S.jenis==="tarik" : setor)));
   $("srcWrap").hidden = !setor;
+  $("dariWrap").hidden = g!=="keluar";
+  document.querySelectorAll("#segDari button").forEach(b=> b.setAttribute("aria-pressed", String(b.dataset.d===S.dari)));
+  $("dariHint").textContent = S.dari ? "Sisa uang tidak berubah, "+S.dari+" yang berkurang." : "";
   document.querySelectorAll("#segSrc button").forEach(b=> b.setAttribute("aria-pressed", String(b.dataset.j===S.jenis)));
   $("srcHint").textContent = S.jenis==="tabung_luar"
     ? "Langsung masuk tabungan, sisa uang tidak berubah."
@@ -776,6 +828,7 @@ function defaultTabFor(){
 function openSheet(row, preset){
   S.edit = row || null; S.delArmed=false;
   S.jenis = row ? row.jenis : (preset || "keluar");
+  S.dari = row ? (row.dari||"") : "";
   S.kategori = row ? row.kategori : (isTab(S.jenis) ? defaultTabFor() : null);
   $("jumlah").value = row ? Number(row.jumlah).toLocaleString("id-ID") : "";
   $("tanggal").value = row ? row.tanggal : today();
@@ -807,6 +860,7 @@ document.querySelectorAll("#segTab button").forEach(b=> b.addEventListener("clic
   renderForm();
 }));
 document.querySelectorAll("#segSrc button").forEach(b=> b.addEventListener("click",()=>{ S.jenis=b.dataset.j; renderForm(); }));
+document.querySelectorAll("#segDari button").forEach(b=> b.addEventListener("click",()=>{ S.dari=b.dataset.d; renderForm(); }));
 $("close").addEventListener("click", closeSheet);
 $("scrim").addEventListener("click", e=>{ if(e.target.id==="scrim") closeSheet(); });
 
@@ -816,7 +870,7 @@ $("form").addEventListener("submit", async e=>{
   if(!jumlah){ $("err").textContent="Isi jumlah uangnya dulu."; return; }
   if(!S.kategori){ $("err").textContent = isTab(S.jenis) ? "Pilih tabungan Mamah atau Papah." : "Pilih salah satu kategori."; return; }
   const tanggal = $("tanggal").value || today();
-  const data = { jenis:S.jenis, jumlah, kategori:S.kategori, tanggal, catatan: $("catatan").value.trim().slice(0,140) };
+  const data = { jenis:(S.jenis==="keluar" && DARI_J[S.dari]) || S.jenis, jumlah, kategori:S.kategori, tanggal, catatan: $("catatan").value.trim().slice(0,140) };
   const id = S.edit && S.edit.id;
   $("save").disabled = true; $("save").textContent="Menyimpan…"; $("err").textContent="";
   try{
@@ -849,7 +903,7 @@ function openDetail(r){
   const d = new Date(r.tanggal+"T00:00:00");
   const rows = [];
   if(r.jenis==="masuk") rows.push(["Uang dari", r.kategori]);
-  else if(r.jenis==="keluar") rows.push(["Dipakai untuk", r.kategori]);
+  else if(r.jenis==="keluar"){ rows.push(["Dipakai untuk", r.kategori]); rows.push(["Diambil dari", r.dari || "Sisa uang"]); }
   else rows.push(["Tabungan", r.kategori]);
   if(r.jenis==="tabung") rows.push(["Asal uang", "Dari sisa uang"]);
   if(r.jenis==="tabung_luar") rows.push(["Asal uang", "Dari luar (langsung ke tabungan)"]);
@@ -997,8 +1051,24 @@ $("loginForm").addEventListener("submit", async e=>{
   }finally{ $("loginGo").disabled = false; $("loginGo").textContent = "Masuk"; }
 });
 
+$("meAv").addEventListener("click", ()=> $("fotoIn").click());
+$("fotoIn").addEventListener("change", async e=>{
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if(!f || !WHO) return;
+  const lama = FOTO[WHO];
+  try{
+    let url = await kecilkan(f, .8);
+    if(url.length > 48000) url = await kecilkan(f, .55);
+    FOTO[WHO] = url; renderFoto(); setNote("Menyimpan foto…");
+    terapkan(await call("foto", url)); setNote("");
+  }catch(err){
+    FOTO[WHO] = lama; renderFoto();
+    setNote("Gagal menyimpan foto. Cek internet lalu coba lagi.");
+  }
+});
+
 render();
-WHO = ""; pickWho = ""; LS.del("dk_who"); showLogin();
+WHO = ""; pickWho = ""; LS.del("dk_who"); showLogin(); muat();
 </script>
 </body>
 </html>
