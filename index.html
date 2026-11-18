@@ -210,6 +210,12 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:12p
 .scrim{position:fixed;inset:0;background:rgba(6,10,22,.55);z-index:10;display:flex;align-items:flex-end;justify-content:center}
 .scrim[hidden]{display:none}
 .scrim{padding-top:calc(env(safe-area-inset-top) + 12px)}
+.crop-hint{text-align:center;margin:0}
+.crop-box{position:relative;width:min(78vw,320px);aspect-ratio:1/1;height:auto;margin:0 auto;border-radius:18px;overflow:hidden;background:#0b1224;touch-action:none;cursor:grab;flex:none}
+.crop-box img{position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;pointer-events:none}
+.crop-box::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(6,10,22,.5);border:2px solid rgba(255,255,255,.85);pointer-events:none}
+#cropZoom{width:min(78vw,320px);margin:0 auto;accent-color:#C0913F}
+.crop-batal{background:var(--soft);color:var(--ink)}
 .sheet-h .x{width:38px;height:38px;background:var(--soft);color:var(--ink);border:1px solid var(--line);margin-top:8px}
 .sheet-h .x svg{width:18px;height:18px}
 .sheet{background:var(--surface);width:100%;max-width:520px;border-radius:26px 26px 0 0;max-height:calc(92vh - env(safe-area-inset-top));max-height:calc(100dvh - env(safe-area-inset-top) - 20px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -10px 40px -10px rgba(0,0,0,.3)}
@@ -289,6 +295,20 @@ textarea.plain{resize:none;min-height:48px}
       <p class="err" id="loginErr" role="alert"></p>
       <button class="btn gold" id="loginGo" type="submit" hidden>Masuk</button>
     </form>
+  </div>
+</div>
+<div class="scrim" id="cropScrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cropTtl">
+    <div class="sheet-h"><h3 id="cropTtl">Atur foto profil</h3><button class="x" type="button" id="cropX" aria-label="Tutup" data-i="x"></button></div>
+    <div class="sheet-b">
+      <p class="hint crop-hint">Geser foto untuk atur posisi. Cubit dua jari atau pakai slider untuk zoom.</p>
+      <div class="crop-box" id="cropBox"><img id="cropImg" alt="" draggable="false"></div>
+      <input type="range" id="cropZoom" min="1" max="4" step="0.01" value="1" aria-label="Zoom foto">
+    </div>
+    <div class="sheet-f">
+      <button class="btn crop-batal" type="button" id="cropBatal">Batal</button>
+      <button class="btn gold" type="button" id="cropOk">Pakai foto</button>
+    </div>
   </div>
 </div>
 <div id="scroller">
@@ -659,7 +679,7 @@ async function muat(){
   finally{ memuat = false; $("refresh").classList.remove("spin"); }
 }
 const nameOf = id => !id ? "" : (S.names[id] || id.split("@")[0]);
-const scrims = ["scrim","adminScrim","whoScrim","periodScrim","detailScrim"];
+const scrims = ["scrim","adminScrim","whoScrim","periodScrim","detailScrim","cropScrim"];
 const anyOpen = () => scrims.some(id => !$(id).hidden);
 
 /* ---------- tampilan ---------- */
@@ -1055,19 +1075,81 @@ $("loginForm").addEventListener("submit", async e=>{
 });
 
 $("meAv").addEventListener("click", ()=> $("fotoIn").click());
+/* ---------- atur (crop) foto 1:1 ---------- */
+const CR = {iw:0, ih:0, base:1, z:1, x:0, y:0, url:"", pts:new Map(), d0:0, z0:1};
+const cb = $("cropBox");
+function cropTerap(){
+  const box = cb.clientWidth, s = CR.base*CR.z, w = CR.iw*s, h = CR.ih*s;
+  CR.x = Math.min(0, Math.max(box-w, CR.x)); CR.y = Math.min(0, Math.max(box-h, CR.y));
+  $("cropImg").style.transform = "translate("+CR.x+"px,"+CR.y+"px) scale("+s+")";
+}
+function setZoom(z, cx, cy){
+  const box = cb.clientWidth; if(cx==null){ cx = cy = box/2; }
+  z = Math.min(4, Math.max(1, z));
+  const s0 = CR.base*CR.z, s1 = CR.base*z;
+  CR.x = cx-(cx-CR.x)*s1/s0; CR.y = cy-(cy-CR.y)*s1/s0; CR.z = z;
+  $("cropZoom").value = z; cropTerap();
+}
+function bukaCrop(file){
+  return new Promise((ok, no)=>{
+    const u = URL.createObjectURL(file), im = $("cropImg");
+    im.onload = ()=>{
+      CR.iw = im.naturalWidth; CR.ih = im.naturalHeight; CR.url = u;
+      im.style.width = CR.iw+"px"; im.style.height = CR.ih+"px";
+      $("cropScrim").hidden = false;
+      requestAnimationFrame(()=>{
+        const box = cb.clientWidth;
+        CR.base = box/Math.min(CR.iw, CR.ih); CR.z = 1; $("cropZoom").value = 1;
+        CR.x = (box-CR.iw*CR.base)/2; CR.y = (box-CR.ih*CR.base)/2; cropTerap();
+      });
+      ok();
+    };
+    im.onerror = ()=>{ URL.revokeObjectURL(u); no(new Error("Foto tidak bisa dibuka.")); };
+    im.src = u;
+  });
+}
+function tutupCrop(){ $("cropScrim").hidden = true; CR.pts.clear(); if(CR.url){ URL.revokeObjectURL(CR.url); CR.url = ""; } }
+cb.addEventListener("pointerdown", e=>{
+  e.preventDefault(); try{ cb.setPointerCapture(e.pointerId); }catch(_){}
+  CR.pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(CR.pts.size===2){ const [a,b] = [...CR.pts.values()]; CR.d0 = Math.hypot(a.x-b.x, a.y-b.y) || 1; CR.z0 = CR.z; }
+});
+cb.addEventListener("pointermove", e=>{
+  const p = CR.pts.get(e.pointerId); if(!p) return;
+  const dx = e.clientX-p.x, dy = e.clientY-p.y;
+  CR.pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(CR.pts.size===1){ CR.x += dx; CR.y += dy; cropTerap(); }
+  else if(CR.pts.size===2){
+    const [a,b] = [...CR.pts.values()], r = cb.getBoundingClientRect();
+    setZoom(CR.z0*Math.hypot(a.x-b.x, a.y-b.y)/CR.d0, (a.x+b.x)/2-r.left, (a.y+b.y)/2-r.top);
+  }
+});
+const lepas = e=>{ CR.pts.delete(e.pointerId); if(CR.pts.size===2){ const [a,b] = [...CR.pts.values()]; CR.d0 = Math.hypot(a.x-b.x, a.y-b.y) || 1; CR.z0 = CR.z; } };
+cb.addEventListener("pointerup", lepas); cb.addEventListener("pointercancel", lepas);
+cb.addEventListener("wheel", e=>{ e.preventDefault(); const r = cb.getBoundingClientRect(); setZoom(CR.z*(e.deltaY<0?1.1:1/1.1), e.clientX-r.left, e.clientY-r.top); }, {passive:false});
+$("cropZoom").addEventListener("input", e=> setZoom(+e.target.value));
+$("cropX").addEventListener("click", tutupCrop);
+$("cropBatal").addEventListener("click", tutupCrop);
+function hasilCrop(q){
+  const box = cb.clientWidth, s = CR.base*CR.z, sz = 240;
+  const c = document.createElement("canvas"); c.width = c.height = sz;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0,0,sz,sz);
+  x.drawImage($("cropImg"), -CR.x/s, -CR.y/s, box/s, box/s, 0, 0, sz, sz);
+  return c.toDataURL("image/jpeg", q);
+}
+$("cropOk").addEventListener("click", async ()=>{
+  if(!WHO) return;
+  let url = hasilCrop(.82); if(url.length > 48000) url = hasilCrop(.55);
+  tutupCrop();
+  const lama = FOTO[WHO];
+  FOTO[WHO] = url; renderFoto(); setNote("Menyimpan foto…");
+  try{ terapkan(await call("foto", url)); setNote(""); }
+  catch(err){ FOTO[WHO] = lama; renderFoto(); setNote("Gagal menyimpan foto. Cek internet lalu coba lagi."); }
+});
 $("fotoIn").addEventListener("change", async e=>{
   const f = e.target.files && e.target.files[0]; e.target.value = "";
   if(!f || !WHO) return;
-  const lama = FOTO[WHO];
-  try{
-    let url = await kecilkan(f, .8);
-    if(url.length > 48000) url = await kecilkan(f, .55);
-    FOTO[WHO] = url; renderFoto(); setNote("Menyimpan foto…");
-    terapkan(await call("foto", url)); setNote("");
-  }catch(err){
-    FOTO[WHO] = lama; renderFoto();
-    setNote("Gagal menyimpan foto. Cek internet lalu coba lagi.");
-  }
+  try{ await bukaCrop(f); }catch(err){ setNote("Foto tidak bisa dibuka. Coba foto lain."); }
 });
 
 render();
